@@ -1,15 +1,16 @@
-from fastapi import FastAPI, APIRouter
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List
+from pydantic import BaseModel, Field
+from typing import List, Optional
 import uuid
 from datetime import datetime, timezone
-
+import base64
+from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -19,54 +20,247 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# Create the main app without a prefix
+# Create the main app
 app = FastAPI()
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
-# Define Models
-class StatusCheck(BaseModel):
-    model_config = ConfigDict(extra="ignore")  # Ignore MongoDB's _id field
+# Models
+class Violation(BaseModel):
+    type: str
+    location: str
+    confidence: int
+    category: str  # PPE, Equipment, Environmental, Housekeeping
+
+class AnalysisResults(BaseModel):
+    violations: List[Violation]
+    riskLevel: str  # High, Medium, Low
+    safetyScore: int  # 0-100
+
+class PhotoAnalysisRequest(BaseModel):
+    image_base64: str
+    file_name: str
+
+class PhotoAnalysisResponse(BaseModel):
+    photoId: str
+    fileName: str
+    uploadTime: str
+    analysisResults: AnalysisResults
+    processingTime: float
+
+class BatchAnalysisRequest(BaseModel):
+    images: List[PhotoAnalysisRequest]
+
+# Safety Analysis Prompt
+SAFETY_ANALYSIS_PROMPT = """You are an expert industrial safety inspector analyzing site photos for NESR (National Energy Services Reunited), an oilfield services company.
+
+Analyze this image and identify ALL safety violations. For each violation found, provide:
+1. Type of violation (e.g., "Missing Hard Hat", "Exposed Wiring", "Spill Hazard")
+2. Location in image (e.g., "top-left", "center", "bottom-right", "left-center")
+3. Confidence score (0-100)
+4. Category: PPE, Equipment, Environmental, or Housekeeping
+
+PPE Violations to detect:
+- Missing hard hat
+- Missing safety vest/high-visibility clothing
+- Missing gloves
+- Missing safety glasses/goggles
+- Missing safety boots
+- Improper PPE usage
+
+Equipment Hazards:
+- Exposed machinery parts
+- Uncovered pits/holes
+- Improperly stacked materials
+- Unsecured equipment
+- Missing guards on machinery
+
+Environmental Hazards:
+- Spills (oil, chemical, water)
+- Exposed wiring
+- Fire hazards
+- Blocked exits/pathways
+- Poor lighting conditions
+
+Housekeeping Violations:
+- Clutter and debris
+- Disorganized workspace
+- Unsanitary conditions
+- Improper waste disposal
+
+Respond in this exact JSON format:
+{
+    "violations": [
+        {"type": "Violation Name", "location": "location-in-image", "confidence": 95, "category": "Category"},
+        ...
+    ],
+    "riskLevel": "High|Medium|Low",
+    "safetyScore": 0-100,
+    "summary": "Brief summary of findings"
+}
+
+Risk Level Guidelines:
+- High: Any PPE violation involving head/eye protection, exposed wiring, fire hazards, or multiple serious violations
+- Medium: Minor PPE issues, housekeeping problems, or single non-critical violations
+- Low: Minor housekeeping issues or suggestions for improvement
+
+Safety Score: 100 = Perfect safety, 0 = Extremely hazardous. Deduct points for each violation based on severity.
+
+If the image is not a worksite/industrial setting or has no violations, return:
+{
+    "violations": [],
+    "riskLevel": "Low",
+    "safetyScore": 100,
+    "summary": "No safety violations detected"
+}
+
+Analyze the image thoroughly and be specific about what you observe."""
+
+async def analyze_image_with_vision(image_base64: str) -> dict:
+    """Analyze image using GPT-4o Vision"""
+    import time
+    start_time = time.time()
     
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    client_name: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    api_key = os.environ.get('EMERGENT_LLM_KEY')
+    if not api_key:
+        raise HTTPException(status_code=500, detail="EMERGENT_LLM_KEY not configured")
+    
+    try:
+        chat = LlmChat(
+            api_key=api_key,
+            session_id=f"safety-analysis-{uuid.uuid4()}",
+            system_message="You are an expert industrial safety inspector. Always respond with valid JSON."
+        ).with_model("openai", "gpt-4o")
+        
+        # Create image content
+        image_content = ImageContent(image_base64=image_base64)
+        
+        # Create message with image
+        user_message = UserMessage(
+            text=SAFETY_ANALYSIS_PROMPT,
+            file_contents=[image_content]
+        )
+        
+        # Send message and get response
+        response = await chat.send_message(user_message)
+        
+        processing_time = time.time() - start_time
+        
+        # Parse JSON response
+        import json
+        # Clean response - remove markdown code blocks if present
+        response_text = response.strip()
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+        response_text = response_text.strip()
+        
+        analysis_data = json.loads(response_text)
+        
+        return {
+            "violations": analysis_data.get("violations", []),
+            "riskLevel": analysis_data.get("riskLevel", "Low"),
+            "safetyScore": analysis_data.get("safetyScore", 100),
+            "summary": analysis_data.get("summary", ""),
+            "processingTime": processing_time
+        }
+        
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON parse error: {e}, response: {response[:500] if response else 'None'}")
+        # Return default response on parse error
+        return {
+            "violations": [],
+            "riskLevel": "Low",
+            "safetyScore": 100,
+            "summary": "Unable to parse analysis results",
+            "processingTime": time.time() - start_time
+        }
+    except Exception as e:
+        logger.error(f"Vision API error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Vision analysis failed: {str(e)}")
 
-class StatusCheckCreate(BaseModel):
-    client_name: str
-
-# Add your routes to the router instead of directly to app
+# Routes
 @api_router.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"message": "NESR Safety Inspection API"}
 
-@api_router.post("/status", response_model=StatusCheck)
-async def create_status_check(input: StatusCheckCreate):
-    status_dict = input.model_dump()
-    status_obj = StatusCheck(**status_dict)
-    
-    # Convert to dict and serialize datetime to ISO string for MongoDB
-    doc = status_obj.model_dump()
-    doc['timestamp'] = doc['timestamp'].isoformat()
-    
-    _ = await db.status_checks.insert_one(doc)
-    return status_obj
+@api_router.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "NESR Safety Vision"}
 
-@api_router.get("/status", response_model=List[StatusCheck])
-async def get_status_checks():
-    # Exclude MongoDB's _id field from the query results
-    status_checks = await db.status_checks.find({}, {"_id": 0}).to_list(1000)
+@api_router.post("/analyze", response_model=PhotoAnalysisResponse)
+async def analyze_photo(request: PhotoAnalysisRequest):
+    """Analyze a single photo for safety violations"""
+    photo_id = str(uuid.uuid4())
+    upload_time = datetime.now(timezone.utc).isoformat()
     
-    # Convert ISO string timestamps back to datetime objects
-    for check in status_checks:
-        if isinstance(check['timestamp'], str):
-            check['timestamp'] = datetime.fromisoformat(check['timestamp'])
+    # Analyze with Vision API
+    analysis = await analyze_image_with_vision(request.image_base64)
     
-    return status_checks
+    return PhotoAnalysisResponse(
+        photoId=photo_id,
+        fileName=request.file_name,
+        uploadTime=upload_time,
+        analysisResults=AnalysisResults(
+            violations=[Violation(**v) for v in analysis["violations"]],
+            riskLevel=analysis["riskLevel"],
+            safetyScore=analysis["safetyScore"]
+        ),
+        processingTime=analysis["processingTime"]
+    )
 
-# Include the router in the main app
+@api_router.post("/analyze-batch", response_model=List[PhotoAnalysisResponse])
+async def analyze_batch(request: BatchAnalysisRequest):
+    """Analyze multiple photos for safety violations"""
+    results = []
+    
+    for image_req in request.images:
+        try:
+            photo_id = str(uuid.uuid4())
+            upload_time = datetime.now(timezone.utc).isoformat()
+            
+            analysis = await analyze_image_with_vision(image_req.image_base64)
+            
+            results.append(PhotoAnalysisResponse(
+                photoId=photo_id,
+                fileName=image_req.file_name,
+                uploadTime=upload_time,
+                analysisResults=AnalysisResults(
+                    violations=[Violation(**v) for v in analysis["violations"]],
+                    riskLevel=analysis["riskLevel"],
+                    safetyScore=analysis["safetyScore"]
+                ),
+                processingTime=analysis["processingTime"]
+            ))
+        except Exception as e:
+            logger.error(f"Error analyzing {image_req.file_name}: {str(e)}")
+            # Add error result
+            results.append(PhotoAnalysisResponse(
+                photoId=str(uuid.uuid4()),
+                fileName=image_req.file_name,
+                uploadTime=datetime.now(timezone.utc).isoformat(),
+                analysisResults=AnalysisResults(
+                    violations=[],
+                    riskLevel="Low",
+                    safetyScore=0
+                ),
+                processingTime=0
+            ))
+    
+    return results
+
+# Include the router
 app.include_router(api_router)
 
 app.add_middleware(
@@ -76,13 +270,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
