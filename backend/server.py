@@ -183,10 +183,48 @@ async def analyze_image_with_vision(image_base64: str) -> dict:
         
         analysis_data = json.loads(response_text)
         
+        # Extract data
+        violations = analysis_data.get("violations", [])
+        risk_level = analysis_data.get("riskLevel", "Low")
+        safety_score = analysis_data.get("safetyScore", 100)
+        
+        # Validate and adjust safety score based on violations
+        num_violations = len(violations)
+        
+        # Count critical violations
+        critical_violations = sum(1 for v in violations if v.get("type", "").lower() in [
+            "missing hard hat", "exposed wiring", "fire hazard", "uncovered pit",
+            "blocked exit", "missing safety glasses", "exposed machinery"
+        ] or v.get("category", "") in ["PPE", "Environmental"])
+        
+        # Calculate expected max score based on violations
+        if num_violations >= 5 or critical_violations >= 2:
+            max_expected_score = 35
+        elif num_violations >= 3 or critical_violations >= 1:
+            max_expected_score = 55
+        elif num_violations >= 2:
+            max_expected_score = 70
+        elif num_violations >= 1:
+            max_expected_score = 85
+        else:
+            max_expected_score = 100
+        
+        # Adjust score if AI returned too high
+        if safety_score > max_expected_score:
+            safety_score = max_expected_score
+        
+        # Validate risk level matches score
+        if safety_score <= 49 or critical_violations >= 1:
+            risk_level = "High"
+        elif safety_score <= 74:
+            risk_level = "Medium"
+        else:
+            risk_level = "Low"
+        
         return {
-            "violations": analysis_data.get("violations", []),
-            "riskLevel": analysis_data.get("riskLevel", "Low"),
-            "safetyScore": analysis_data.get("safetyScore", 100),
+            "violations": violations,
+            "riskLevel": risk_level,
+            "safetyScore": safety_score,
             "summary": analysis_data.get("summary", ""),
             "processingTime": processing_time
         }
