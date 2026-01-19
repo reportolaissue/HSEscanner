@@ -54,7 +54,7 @@ class NESRSafetyAPITester:
             draw.circle([250, 225], 15, fill='black')  # Wheel
             
             # Person (potential PPE violation)
-            draw.ellipse([300, 180, 320, 200], fill='peach')  # Head (no hard hat)
+            draw.ellipse([300, 180, 320, 200], fill='#FFDBAC')  # Head (no hard hat)
             draw.rectangle([305, 200, 315, 240], fill='blue')  # Body
             draw.rectangle([300, 240, 320, 250], fill='black')  # Legs
             
