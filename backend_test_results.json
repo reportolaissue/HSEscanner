@@ -1,0 +1,49 @@
+{
+  "total_tests": 6,
+  "passed_tests": 3,
+  "failed_tests": 3,
+  "success_rate": 50.0,
+  "test_details": [
+    {
+      "test": "Root Endpoint",
+      "success": true,
+      "details": "",
+      "response_data": {
+        "message": "NESR Safety Inspection API"
+      }
+    },
+    {
+      "test": "Health Check",
+      "success": true,
+      "details": "",
+      "response_data": {
+        "status": "healthy",
+        "service": "NESR Safety Vision"
+      }
+    },
+    {
+      "test": "CORS Headers",
+      "success": false,
+      "details": "No CORS headers found in: ['allow', 'Content-Length', 'content-type', 'date', 'server', 'via', 'Alt-Svc']",
+      "response_data": null
+    },
+    {
+      "test": "Analyze Endpoint - Safety Scene",
+      "success": false,
+      "details": "Request failed: unknown color specifier: 'peach'",
+      "response_data": null
+    },
+    {
+      "test": "Analyze Endpoint - Clean Site",
+      "success": false,
+      "details": "Request failed: unknown color specifier: 'peach'",
+      "response_data": null
+    },
+    {
+      "test": "Analyze Endpoint - Invalid Data",
+      "success": true,
+      "details": "Correctly rejected invalid data with status 520",
+      "response_data": null
+    }
+  ]
+}
