@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { FileText, Download, Loader2 } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
+import autoTable from "jspdf-autotable";
 import { toast } from "sonner";
 
 export const ReportGenerator = ({ photos, stats }) => {
@@ -24,8 +24,8 @@ export const ReportGenerator = ({ photos, stats }) => {
       let yPos = margin;
 
       // Colors
-      const primaryColor = [15, 23, 42]; // NESR Blue
-      const accentColor = [249, 115, 22]; // Safety Orange
+      const primaryColor = [15, 23, 42];
+      const accentColor = [249, 115, 22];
       const textColor = [30, 41, 59];
       const mutedColor = [100, 116, 139];
 
@@ -61,7 +61,7 @@ export const ReportGenerator = ({ photos, stats }) => {
         ["Average Safety Score", `${stats.avgSafetyScore}%`],
       ];
 
-      doc.autoTable({
+      autoTable(doc, {
         startY: yPos,
         head: [],
         body: summaryData,
@@ -126,7 +126,7 @@ export const ReportGenerator = ({ photos, stats }) => {
       });
 
       if (allViolations.length > 0) {
-        doc.autoTable({
+        autoTable(doc, {
           startY: yPos,
           head: [['File', 'Violation', 'Category', 'Location', 'Confidence', 'Risk']],
           body: allViolations.map(v => [
@@ -229,7 +229,7 @@ export const ReportGenerator = ({ photos, stats }) => {
       }
 
       if (recommendations.length > 0) {
-        doc.autoTable({
+        autoTable(doc, {
           startY: yPos,
           head: [['Category', 'Issues', 'Recommended Action']],
           body: recommendations,
