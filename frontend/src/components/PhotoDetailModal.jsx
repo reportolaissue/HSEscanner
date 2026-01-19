@@ -17,9 +17,10 @@ import {
   Clock,
   MapPin,
   Save,
-  X,
-  ChevronDown
+  FileDown
 } from "lucide-react";
+import { generateSinglePhotoPDF } from "@/utils/pdfGenerator";
+import { toast } from "sonner";
 
 const getRiskBadgeClass = (riskLevel) => {
   switch (riskLevel) {
@@ -82,6 +83,18 @@ export const PhotoDetailModal = ({
     setHasChanges(false);
   };
 
+  const handleDownloadPDF = () => {
+    try {
+      const pdfFileName = generateSinglePhotoPDF(photo);
+      toast.success("Report Downloaded", {
+        description: pdfFileName
+      });
+    } catch (error) {
+      console.error("PDF generation error:", error);
+      toast.error("Failed to generate report");
+    }
+  };
+
   // Group violations by category
   const groupedViolations = violations.reduce((acc, v) => {
     if (!acc[v.category]) acc[v.category] = [];
@@ -96,10 +109,10 @@ export const PhotoDetailModal = ({
         data-testid="photo-detail-modal"
         aria-describedby="photo-analysis-description"
       >
-        {/* Mobile-first layout - stack on mobile, side-by-side on desktop */}
+        {/* Mobile-first layout */}
         <div className="flex flex-col md:flex-row h-full max-h-[90vh] overflow-hidden">
           
-          {/* Image Section - Fixed height on mobile, flexible on desktop */}
+          {/* Image Section */}
           <div className="relative bg-black md:w-1/2 flex-shrink-0">
             <div className="relative h-48 sm:h-64 md:h-full md:min-h-[400px]">
               <img 
@@ -133,10 +146,21 @@ export const PhotoDetailModal = ({
                   {safetyScore}%
                 </p>
               </div>
+
+              {/* Download PDF Button on Image */}
+              <Button
+                className="absolute bottom-3 right-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-sm"
+                size="sm"
+                onClick={handleDownloadPDF}
+                data-testid="modal-download-pdf"
+              >
+                <FileDown className="w-4 h-4 mr-1" />
+                <span className="hidden sm:inline">Download</span> PDF
+              </Button>
             </div>
           </div>
 
-          {/* Details Section - Scrollable */}
+          {/* Details Section */}
           <div className="flex flex-col md:w-1/2 bg-card overflow-hidden">
             <DialogHeader className="p-4 border-b border-border flex-shrink-0">
               <DialogTitle className="font-heading text-lg uppercase tracking-tight">
@@ -246,7 +270,7 @@ export const PhotoDetailModal = ({
               </div>
             </div>
 
-            {/* Actions Footer - Fixed at bottom */}
+            {/* Actions Footer */}
             <div className="p-3 sm:p-4 border-t border-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 flex-shrink-0 bg-card">
               <Button
                 variant={flaggedForFollowUp ? "default" : "outline"}
