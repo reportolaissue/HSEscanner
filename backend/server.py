@@ -60,7 +60,7 @@ class BatchAnalysisRequest(BaseModel):
     images: List[PhotoAnalysisRequest]
 
 # Safety Analysis Prompt
-SAFETY_ANALYSIS_PROMPT = """You are an expert industrial safety inspector analyzing site photos for NESR (National Energy Services Reunited), an oilfield services company.
+SAFETY_ANALYSIS_PROMPT = """You are an expert industrial safety inspector analyzing site photos. Be STRICT in your safety scoring.
 
 Analyze this image and identify ALL safety violations. For each violation found, provide:
 1. Type of violation (e.g., "Missing Hard Hat", "Exposed Wiring", "Spill Hazard")
@@ -68,33 +68,53 @@ Analyze this image and identify ALL safety violations. For each violation found,
 3. Confidence score (0-100)
 4. Category: PPE, Equipment, Environmental, or Housekeeping
 
-PPE Violations to detect:
-- Missing hard hat
-- Missing safety vest/high-visibility clothing
-- Missing gloves
-- Missing safety glasses/goggles
-- Missing safety boots
-- Improper PPE usage
+VIOLATION CATEGORIES:
 
-Equipment Hazards:
-- Exposed machinery parts
-- Uncovered pits/holes
-- Improperly stacked materials
-- Unsecured equipment
-- Missing guards on machinery
+PPE Violations (CRITICAL - deduct 15-25 points each):
+- Missing hard hat (-25 points)
+- Missing safety vest/high-visibility clothing (-20 points)
+- Missing gloves (-15 points)
+- Missing safety glasses/goggles (-20 points)
+- Missing safety boots (-15 points)
+- Improper PPE usage (-15 points)
 
-Environmental Hazards:
-- Spills (oil, chemical, water)
-- Exposed wiring
-- Fire hazards
-- Blocked exits/pathways
-- Poor lighting conditions
+Equipment Hazards (SERIOUS - deduct 15-25 points each):
+- Exposed machinery parts (-20 points)
+- Uncovered pits/holes (-25 points)
+- Improperly stacked materials (-15 points)
+- Unsecured equipment (-20 points)
+- Missing guards on machinery (-20 points)
 
-Housekeeping Violations:
-- Clutter and debris
-- Disorganized workspace
-- Unsanitary conditions
-- Improper waste disposal
+Environmental Hazards (CRITICAL - deduct 20-30 points each):
+- Spills (oil, chemical, water) (-20 points)
+- Exposed wiring (-30 points)
+- Fire hazards (-30 points)
+- Blocked exits/pathways (-25 points)
+- Poor lighting conditions (-15 points)
+
+Housekeeping Violations (MODERATE - deduct 5-15 points each):
+- Clutter and debris (-10 points)
+- Disorganized workspace (-5 points)
+- Unsanitary conditions (-10 points)
+- Improper waste disposal (-15 points)
+
+STRICT SCORING RULES:
+- Start at 100 points
+- Subtract points for EACH violation found based on severity above
+- MINIMUM score is 0 (cannot go negative)
+- Multiple violations of same type: deduct for EACH instance
+
+SAFETY SCORE INTERPRETATION:
+- 90-100: Excellent (0-1 minor violations)
+- 70-89: Good (few minor violations)
+- 50-69: Fair (multiple violations, needs attention)
+- 30-49: Poor (serious violations, immediate action needed)
+- 0-29: Critical (multiple serious violations, work should stop)
+
+RISK LEVEL (must match safety score):
+- High Risk: Safety score 0-49 OR any critical violation (missing hard hat, exposed wiring, fire hazard)
+- Medium Risk: Safety score 50-74
+- Low Risk: Safety score 75-100 AND no critical violations
 
 Respond in this exact JSON format:
 {
@@ -107,12 +127,7 @@ Respond in this exact JSON format:
     "summary": "Brief summary of findings"
 }
 
-Risk Level Guidelines:
-- High: Any PPE violation involving head/eye protection, exposed wiring, fire hazards, or multiple serious violations
-- Medium: Minor PPE issues, housekeeping problems, or single non-critical violations
-- Low: Minor housekeeping issues or suggestions for improvement
-
-Safety Score: 100 = Perfect safety, 0 = Extremely hazardous. Deduct points for each violation based on severity.
+IMPORTANT: If you detect 3+ violations, the safety score should be BELOW 60. If you detect 5+ violations or any critical violation, the score should be BELOW 40.
 
 If the image is not a worksite/industrial setting or has no violations, return:
 {
@@ -122,7 +137,7 @@ If the image is not a worksite/industrial setting or has no violations, return:
     "summary": "No safety violations detected"
 }
 
-Analyze the image thoroughly and be specific about what you observe."""
+Analyze the image thoroughly and be STRICT with scoring."""
 
 async def analyze_image_with_vision(image_base64: str) -> dict:
     """Analyze image using GPT-4o Vision"""
