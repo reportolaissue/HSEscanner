@@ -103,7 +103,7 @@
 
 1. **Free Tier**: App sleeps after 15 min of inactivity. First request takes ~30 sec to wake up.
 
-2. **EMERGENT_LLM_KEY Balance**: Ensure you have credits (Profile → Universal Key → Add Balance)
+2. **OpenAI API Costs**: GPT-4o Vision API has usage costs. Check your OpenAI billing.
 
 3. **Build Time**: First deployment takes 5-10 min (building React + installing Python deps)
 
