@@ -67,7 +67,7 @@
    |-----|-------|
    | `MONGO_URL` | `mongodb+srv://safetyuser:PASSWORD@cluster0.xxxxx.mongodb.net/safety_vision?retryWrites=true&w=majority` |
    | `DB_NAME` | `safety_vision` |
-   | `EMERGENT_LLM_KEY` | `your-emergent-key-here` |
+   | `OPENAI_API_KEY` | `sk-xxxxx` (your OpenAI API key) |
    | `CORS_ORIGINS` | `*` |
    | `PYTHON_VERSION` | `3.11.0` |
    | `NODE_VERSION` | `18` |
