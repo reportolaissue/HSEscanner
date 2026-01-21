@@ -23,12 +23,13 @@
 
 ---
 
-### Step 2: Get Your EMERGENT_LLM_KEY
+### Step 2: Get Your OpenAI API Key
 
-1. Go to Emergent platform
-2. Click **Profile icon** (top right)
-3. Click **"Universal Key"**
-4. Copy your key
+1. Go to [platform.openai.com](https://platform.openai.com)
+2. Sign up / Log in
+3. Click **"API Keys"** in the left menu
+4. Click **"Create new secret key"**
+5. Copy your key (starts with `sk-...`)
 
 ---
 
